@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>AI Medical Scriber</title>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+            background: #eef2f7;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        header {
+            background: #1d4ed8;
+            color: white;
+            padding: 18px 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        }
+
+        header h1 {
+            font-size: 1.2rem;
+            font-weight: 700;
+            letter-spacing: -0.01em;
+        }
+
+        header p {
+            font-size: 0.75rem;
+            opacity: 0.75;
+            margin-top: 2px;
+        }
+
+        main {
+            flex: 1;
+            display: flex;
+            align-items: flex-start;
+            justify-content: center;
+            padding: 28px 16px 40px;
+        }
+
+        .card {
+            background: white;
+            border-radius: 20px;
+            padding: 36px 28px;
+            width: 100%;
+            max-width: 460px;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.08), 0 1px 4px rgba(0,0,0,0.06);
+        }
+
+        /* --- Inputs --- */
+        .field-label {
+            display: block;
+            font-size: 0.8125rem;
+            font-weight: 600;
+            color: #374151;
+            margin-bottom: 8px;
+            letter-spacing: 0.01em;
+        }
+
+        .text-input {
+            width: 100%;
+            padding: 15px 16px;
+            font-size: 1rem;
+            border: 2px solid #e5e7eb;
+            border-radius: 12px;
+            outline: none;
+            color: #111827;
+            transition: border-color 0.18s;
+            background: #fafafa;
+            -webkit-appearance: none;
+        }
+
+        .text-input:focus {
+            border-color: #1d4ed8;
+            background: white;
+        }
+
+        .text-input::placeholder { color: #9ca3af; }
+        .text-input.error { border-color: #dc2626; }
+
+        .field-error {
+            font-size: 0.75rem;
+            color: #dc2626;
+            margin-top: 5px;
+            display: none;
+        }
+
+        .input-group {
+            margin-bottom: 32px;
+        }
+
+        /* --- Record area --- */
+        .record-area {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 24px;
+        }
+
+        .record-btn {
+            width: 148px;
+            height: 148px;
+            border-radius: 50%;
+            border: none;
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            transition: transform 0.12s, box-shadow 0.18s;
+            -webkit-tap-highlight-color: transparent;
+            touch-action: manipulation;
+            user-select: none;
+        }
+
+        .record-btn:active:not(:disabled) { transform: scale(0.94); }
+        .record-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+        .record-btn.start {
+            background: linear-gradient(145deg, #2563eb, #1d4ed8);
+            box-shadow: 0 8px 28px rgba(29, 78, 216, 0.38), 0 2px 8px rgba(29,78,216,0.2);
+            color: white;
+        }
+
+        .record-btn.stop {
+            background: linear-gradient(145deg, #ef4444, #dc2626);
+            box-shadow: 0 8px 28px rgba(220, 38, 38, 0.38), 0 2px 8px rgba(220,38,38,0.2);
+            color: white;
+        }
+
+        .btn-icon { font-size: 2.6rem; line-height: 1; }
+        .btn-text { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em; }
+
+        /* --- Recording state --- */
+        .recording-badge {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: #fff1f2;
+            padding: 6px 14px;
+            border-radius: 99px;
+        }
+
+        .pulse-dot {
+            width: 10px;
+            height: 10px;
+            background: #dc2626;
+            border-radius: 50%;
+            animation: pulse 1.3s ease-in-out infinite;
+            flex-shrink: 0;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.35; transform: scale(0.75); }
+        }
+
+        .recording-label {
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: #dc2626;
+            letter-spacing: 0.07em;
+        }
+
+        .timer {
+            font-size: 2.5rem;
+            font-weight: 200;
+            color: #111827;
+            letter-spacing: 0.06em;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .patient-chip {
+            font-size: 0.875rem;
+            color: #6b7280;
+            text-align: center;
+        }
+
+        .patient-chip strong { color: #111827; }
+
+        /* --- Spinner --- */
+        .spinner-wrap {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+            padding: 24px 0;
+        }
+
+        .spinner {
+            width: 52px;
+            height: 52px;
+            border: 4px solid #e5e7eb;
+            border-top-color: #1d4ed8;
+            border-radius: 50%;
+            animation: spin 0.75s linear infinite;
+        }
+
+        .spinner.amber { border-top-color: #d97706; }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .status-title {
+            font-size: 1rem;
+            font-weight: 600;
+            color: #111827;
+            text-align: center;
+        }
+
+        .status-sub {
+            font-size: 0.8125rem;
+            color: #6b7280;
+            text-align: center;
+            line-height: 1.5;
+        }
+
+        /* --- Icon circles --- */
+        .icon-circle {
+            width: 84px;
+            height: 84px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2.6rem;
+        }
+
+        .icon-circle.green { background: #dcfce7; }
+        .icon-circle.red   { background: #fee2e2; }
+        .icon-circle.amber { background: #fef3c7; }
+
+        /* --- Action buttons --- */
+        .action-btn {
+            width: 100%;
+            padding: 15px 20px;
+            border-radius: 12px;
+            border: none;
+            cursor: pointer;
+            font-size: 0.9375rem;
+            font-weight: 600;
+            transition: transform 0.1s, opacity 0.15s;
+            -webkit-tap-highlight-color: transparent;
+            touch-action: manipulation;
+        }
+
+        .action-btn:active { transform: scale(0.97); }
+
+        .action-btn.primary   { background: #1d4ed8; color: white; }
+        .action-btn.danger    { background: #dc2626; color: white; }
+        .action-btn.ghost     { background: #f3f4f6; color: #374151; }
+
+        .btn-stack {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            width: 100%;
+        }
+
+        /* --- Divider --- */
+        hr.divider {
+            border: none;
+            border-top: 1px solid #f3f4f6;
+            margin: 4px 0;
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <h1>&#x1F3E5; AI Medical Scriber</h1>
+    <p>Record a consultation — transcribed automatically</p>
+</header>
+
+<main>
+    <div class="card" id="card"></div>
+</main>
+
+<script>
+    // Change this to Railway URL when deployed
+    const BACKEND_URL = 'https://ai-scriber-backend-production.up.railway.app';
+
+    let appState   = 'READY';
+    let mediaRecorder   = null;
+    let audioChunks     = [];
+    let audioBlob       = null;
+    let timerInterval   = null;
+    let recordingSeconds = 0;
+    let patientName     = '';
+    let retryAttempt    = 0;
+    let errorMessage    = '';
+
+    const card = document.getElementById('card');
+
+    // ─── Utilities ────────────────────────────────────────────────────────────
+
+    function fmt(secs) {
+        const m = Math.floor(secs / 60).toString().padStart(2, '0');
+        const s = (secs % 60).toString().padStart(2, '0');
+        return `${m}:${s}`;
+    }
+
+    function wait(ms) {
+        return new Promise(r => setTimeout(r, ms));
+    }
+
+    function getSupportedMimeType() {
+        const candidates = [
+            'audio/webm;codecs=opus',
+            'audio/webm',
+            'audio/ogg;codecs=opus',
+            'audio/mp4',
+        ];
+        for (const type of candidates) {
+            if (MediaRecorder.isTypeSupported(type)) return type;
+        }
+        return '';
+    }
+
+    // ─── State machine ────────────────────────────────────────────────────────
+
+    function setState(next) {
+        console.log(`[Scriber] ${appState} → ${next}`);
+        appState = next;
+        render();
+    }
+
+    function render() {
+        switch (appState) {
+            case 'READY':      renderReady();      break;
+            case 'RECORDING':  renderRecording();  break;
+            case 'PROCESSING': renderProcessing(); break;
+            case 'RETRYING':   renderRetrying();   break;
+            case 'SUCCESS':    renderSuccess();    break;
+            case 'ERROR':      renderError();      break;
+        }
+    }
+
+    // ─── Renderers ────────────────────────────────────────────────────────────
+
+    function renderReady() {
+        card.innerHTML = `
+            <div class="input-group">
+                <label class="field-label" for="pname">Patient Name</label>
+                <input class="text-input" id="pname" type="text"
+                    placeholder="e.g. Jane Smith"
+                    autocomplete="off"
+                    value="${patientName.replace(/"/g, '&quot;')}" />
+                <p class="field-error" id="name-err">Please enter the patient name before recording.</p>
+            </div>
+            <div class="record-area">
+                <button class="record-btn start" id="startBtn" onclick="startRecording()">
+                    <span class="btn-icon">&#x1F3A4;</span>
+                    <span class="btn-text">START RECORDING</span>
+                </button>
+            </div>
+        `;
+        const input = document.getElementById('pname');
+        input.addEventListener('input', e => { patientName = e.target.value; });
+        input.addEventListener('keydown', e => { if (e.key === 'Enter') startRecording(); });
+    }
+
+    function renderRecording() {
+        card.innerHTML = `
+            <div class="record-area">
+                <div class="recording-badge">
+                    <div class="pulse-dot"></div>
+                    <span class="recording-label">RECORDING</span>
+                </div>
+                <div class="timer" id="timer">${fmt(recordingSeconds)}</div>
+                <button class="record-btn stop" onclick="stopRecording()">
+                    <span class="btn-icon">&#x23F9;&#xFE0F;</span>
+                    <span class="btn-text">STOP</span>
+                </button>
+                <p class="patient-chip">Patient: <strong>${patientName || 'Unknown'}</strong></p>
+            </div>
+        `;
+    }
+
+    function renderProcessing() {
+        card.innerHTML = `
+            <div class="spinner-wrap">
+                <div class="spinner"></div>
+                <p class="status-title">Sending for transcription&hellip;</p>
+                <p class="status-sub">Please keep this page open.</p>
+            </div>
+        `;
+    }
+
+    function renderRetrying() {
+        card.innerHTML = `
+            <div class="spinner-wrap">
+                <div class="spinner amber"></div>
+                <p class="status-title">Retrying&hellip; (attempt ${retryAttempt} of 3)</p>
+                <p class="status-sub">Connection issue &mdash; staying on this page to preserve your recording.</p>
+            </div>
+        `;
+    }
+
+    function renderSuccess() {
+        card.innerHTML = `
+            <div class="record-area" style="gap:20px; padding: 8px 0;">
+                <div class="icon-circle green">&#x2705;</div>
+                <p class="status-title" style="color:#15803d;">Upload Successful!</p>
+                <p class="status-sub">Note will appear in Google Sheets shortly.</p>
+                <hr class="divider" style="width:100%;">
+                <div class="btn-stack">
+                    <button class="action-btn primary" onclick="startNew()">Start New Recording</button>
+                </div>
+            </div>
+        `;
+    }
+
+    function renderError() {
+        const canRetry = !!audioBlob;
+        card.innerHTML = `
+            <div class="record-area" style="gap:18px; padding: 8px 0;">
+                <div class="icon-circle red">&#x274C;</div>
+                <p class="status-title" style="color:#dc2626;">Upload Failed</p>
+                <p class="status-sub">${errorMessage}</p>
+                <hr class="divider" style="width:100%;">
+                <div class="btn-stack">
+                    ${canRetry ? `<button class="action-btn danger" onclick="retryUpload()">Try Again</button>` : ''}
+                    <button class="action-btn ghost" onclick="startNew()">Start New Recording</button>
+                </div>
+            </div>
+        `;
+    }
+
+    // ─── Recording logic ──────────────────────────────────────────────────────
+
+    async function startRecording() {
+        const input = document.getElementById('pname');
+        patientName = input ? input.value.trim() : patientName.trim();
+
+        if (!patientName) {
+            if (input) {
+                input.classList.add('error');
+                input.focus();
+            }
+            const err = document.getElementById('name-err');
+            if (err) err.style.display = 'block';
+            return;
+        }
+
+        console.log('[Scriber] Requesting microphone for patient:', patientName);
+
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            console.log('[Scriber] Microphone access granted');
+
+            audioChunks = [];
+            audioBlob   = null;
+            recordingSeconds = 0;
+
+            const mimeType = getSupportedMimeType();
+            console.log('[Scriber] MIME type selected:', mimeType || '(browser default)');
+
+            mediaRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : {});
+
+            mediaRecorder.ondataavailable = e => {
+                if (e.data && e.data.size > 0) {
+                    audioChunks.push(e.data);
+                    console.log('[Scriber] Chunk received, bytes:', e.data.size);
+                }
+            };
+
+            mediaRecorder.onstop = () => {
+                stream.getTracks().forEach(t => t.stop());
+                const blobType = mimeType || 'audio/webm';
+                audioBlob = new Blob(audioChunks, { type: blobType });
+                console.log('[Scriber] Blob created — size:', audioBlob.size, 'type:', audioBlob.type);
+                sendToBackend(1);
+            };
+
+            mediaRecorder.start(1000);
+            setState('RECORDING');
+
+            timerInterval = setInterval(() => {
+                recordingSeconds++;
+                const el = document.getElementById('timer');
+                if (el) el.textContent = fmt(recordingSeconds);
+            }, 1000);
+
+        } catch (err) {
+            console.error('[Scriber] getUserMedia error:', err.name, err.message);
+            if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+                errorMessage = 'Microphone access was denied. Please tap the lock icon in your browser\'s address bar, allow microphone access, then reload the page.';
+            } else if (err.name === 'NotFoundError') {
+                errorMessage = 'No microphone found on this device.';
+            } else {
+                errorMessage = `Could not start recording: ${err.message}`;
+            }
+            setState('ERROR');
+        }
+    }
+
+    function stopRecording() {
+        console.log('[Scriber] Stop button tapped — recording duration:', fmt(recordingSeconds));
+        clearInterval(timerInterval);
+        setState('PROCESSING');
+        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+            mediaRecorder.stop();
+        }
+    }
+
+    // ─── Upload + retry ───────────────────────────────────────────────────────
+
+    async function sendToBackend(attempt) {
+        console.log(`[Scriber] Upload attempt ${attempt} — blob: ${audioBlob?.size} bytes`);
+
+        const formData = new FormData();
+        formData.append('audio', audioBlob, 'recording.webm');
+        formData.append('patientName', patientName);
+
+        try {
+            const res = await fetch(`${BACKEND_URL}/upload`, {
+                method: 'POST',
+                body: formData,
+            });
+
+            console.log('[Scriber] HTTP status:', res.status);
+
+            if (!res.ok) {
+                const body = await res.text().catch(() => '');
+                throw new Error(`Server returned ${res.status}${body ? ': ' + body : ''}`);
+            }
+
+            const data = await res.json();
+            console.log('[Scriber] Success response:', data);
+
+            audioBlob   = null;
+            audioChunks = [];
+            setState('SUCCESS');
+
+        } catch (err) {
+            console.error(`[Scriber] Attempt ${attempt} failed:`, err.message);
+
+            const delays = [2000, 4000, 8000];
+
+            if (attempt <= 3) {
+                retryAttempt = attempt;
+                setState('RETRYING');
+                const delay = delays[attempt - 1];
+                console.log(`[Scriber] Waiting ${delay / 1000}s before retry ${attempt}…`);
+                await wait(delay);
+                await sendToBackend(attempt + 1);
+            } else {
+                console.error('[Scriber] All 3 retries exhausted.');
+                errorMessage = 'Connection failed after 3 attempts. Please check your internet connection and tap Try Again when ready. Your recording is still saved.';
+                setState('ERROR');
+            }
+        }
+    }
+
+    async function retryUpload() {
+        if (!audioBlob) {
+            errorMessage = 'Recording was lost — please record again.';
+            setState('ERROR');
+            return;
+        }
+        console.log('[Scriber] Manual retry — reusing existing audio blob');
+        setState('PROCESSING');
+        await sendToBackend(1);
+    }
+
+    function startNew() {
+        console.log('[Scriber] Starting new session — clearing audio blob');
+        audioBlob        = null;
+        audioChunks      = [];
+        patientName      = '';
+        recordingSeconds = 0;
+        retryAttempt     = 0;
+        errorMessage     = '';
+        clearInterval(timerInterval);
+        setState('READY');
+    }
+
+    // Boot
+    render();
+</script>
+</body>
+</html>

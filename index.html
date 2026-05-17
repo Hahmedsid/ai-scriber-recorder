@@ -90,7 +90,14 @@
         }
 
         .input-group {
-            margin-bottom: 32px;
+            margin-bottom: 20px;
+        }
+
+        .name-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 20px;
         }
 
         /* --- Record area --- */
@@ -290,7 +297,9 @@
     let audioBlob       = null;
     let timerInterval   = null;
     let recordingSeconds = 0;
-    let patientName     = '';
+    let firstName       = '';
+    let lastName        = '';
+    let dateOfBirth     = '';
     let retryAttempt    = 0;
     let errorMessage    = '';
 
@@ -344,13 +353,27 @@
 
     function renderReady() {
         card.innerHTML = `
+            <div class="name-row">
+                <div>
+                    <label class="field-label" for="fname">First Name</label>
+                    <input class="text-input" id="fname" type="text"
+                        placeholder="e.g. Jane"
+                        autocomplete="given-name"
+                        value="${firstName.replace(/"/g, '&quot;')}" />
+                </div>
+                <div>
+                    <label class="field-label" for="lname">Last Name</label>
+                    <input class="text-input" id="lname" type="text"
+                        placeholder="e.g. Smith"
+                        autocomplete="family-name"
+                        value="${lastName.replace(/"/g, '&quot;')}" />
+                </div>
+            </div>
             <div class="input-group">
-                <label class="field-label" for="pname">Patient Name</label>
-                <input class="text-input" id="pname" type="text"
-                    placeholder="e.g. Jane Smith"
-                    autocomplete="off"
-                    value="${patientName.replace(/"/g, '&quot;')}" />
-                <p class="field-error" id="name-err">Please enter the patient name before recording.</p>
+                <label class="field-label" for="dob">Date of Birth</label>
+                <input class="text-input" id="dob" type="date"
+                    value="${dateOfBirth}" />
+                <p class="field-error" id="fields-err">Please fill in all patient fields before recording.</p>
             </div>
             <div class="record-area">
                 <button class="record-btn start" id="startBtn" onclick="startRecording()">
@@ -359,9 +382,9 @@
                 </button>
             </div>
         `;
-        const input = document.getElementById('pname');
-        input.addEventListener('input', e => { patientName = e.target.value; });
-        input.addEventListener('keydown', e => { if (e.key === 'Enter') startRecording(); });
+        document.getElementById('fname').addEventListener('input', e => { firstName = e.target.value; });
+        document.getElementById('lname').addEventListener('input', e => { lastName = e.target.value; });
+        document.getElementById('dob').addEventListener('input', e => { dateOfBirth = e.target.value; });
     }
 
     function renderRecording() {
@@ -376,7 +399,7 @@
                     <span class="btn-icon">&#x23F9;&#xFE0F;</span>
                     <span class="btn-text">STOP</span>
                 </button>
-                <p class="patient-chip">Patient: <strong>${patientName || 'Unknown'}</strong></p>
+                <p class="patient-chip">Patient: <strong>${firstName} ${lastName}</strong></p>
             </div>
         `;
     }
@@ -434,20 +457,20 @@
     // ─── Recording logic ──────────────────────────────────────────────────────
 
     async function startRecording() {
-        const input = document.getElementById('pname');
-        patientName = input ? input.value.trim() : patientName.trim();
+        firstName   = (document.getElementById('fname')?.value || firstName).trim();
+        lastName    = (document.getElementById('lname')?.value || lastName).trim();
+        dateOfBirth = (document.getElementById('dob')?.value  || dateOfBirth).trim();
 
-        if (!patientName) {
-            if (input) {
-                input.classList.add('error');
-                input.focus();
-            }
-            const err = document.getElementById('name-err');
+        if (!firstName || !lastName || !dateOfBirth) {
+            const err = document.getElementById('fields-err');
             if (err) err.style.display = 'block';
+            if (!firstName) document.getElementById('fname')?.classList.add('error');
+            if (!lastName)  document.getElementById('lname')?.classList.add('error');
+            if (!dateOfBirth) document.getElementById('dob')?.classList.add('error');
             return;
         }
 
-        console.log('[Scriber] Requesting microphone for patient:', patientName);
+        console.log('[Scriber] Requesting microphone for patient:', firstName, lastName, dateOfBirth);
 
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -515,7 +538,9 @@
 
         const formData = new FormData();
         formData.append('audio', audioBlob, 'recording.webm');
-        formData.append('patientName', patientName);
+        formData.append('firstName', firstName);
+        formData.append('lastName', lastName);
+        formData.append('dateOfBirth', dateOfBirth);
 
         try {
             const res = await fetch(`${BACKEND_URL}/upload`, {
@@ -572,7 +597,9 @@
         console.log('[Scriber] Starting new session — clearing audio blob');
         audioBlob        = null;
         audioChunks      = [];
-        patientName      = '';
+        firstName        = '';
+        lastName         = '';
+        dateOfBirth      = '';
         recordingSeconds = 0;
         retryAttempt     = 0;
         errorMessage     = '';

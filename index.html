@@ -589,7 +589,7 @@
                 await sendToBackend(attempt + 1);
             } else {
                 console.error('[Scriber] All 3 retries exhausted.');
-                errorMessage = 'Connection failed after 3 attempts. Please check your internet connection and tap Try Again when ready. Your recording is still saved.';
+                errorMessage = 'Connection failed after 3 attempts. Please check your internet connection and tap Try Again when ready.';
                 setState('ERROR');
             }
         }

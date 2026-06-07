@@ -5,33 +5,56 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>AI Medical Scriber</title>
     <style>
+        @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&family=Instrument+Serif&display=swap');
+
+        :root {
+            --bg-primary: #F7F3E2;
+            --bg-surface: #EDE9D5;
+            --bg-card: #E8E3CC;
+            --border: #D4CDB0;
+            --accent-purple-deep: #5D0252;
+            --accent-gold: #FFB411;
+            --accent-green: #052E28;
+            --accent-orange: #FF7017;
+            --accent-error: #A6341A;
+            --text-primary: #1A1A1A;
+            --text-secondary: #4A3F35;
+            --text-muted: #8C7E6E;
+            --text-on-dark: #F7F3E2;
+        }
+
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
-            background: #eef2f7;
+            font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
             min-height: 100vh;
             display: flex;
             flex-direction: column;
         }
 
         header {
-            background: #1d4ed8;
-            color: white;
-            padding: 18px 20px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            background: var(--text-primary);
+            color: var(--text-on-dark);
+            padding: 20px 24px;
+            display: flex;
+            align-items: baseline;
+            gap: 12px;
         }
 
-        header h1 {
-            font-size: 1.2rem;
-            font-weight: 700;
-            letter-spacing: -0.01em;
+        header .brand-name {
+            font-family: 'Instrument Serif', Georgia, serif;
+            font-size: 1.7rem;
+            letter-spacing: 0.01em;
         }
 
-        header p {
-            font-size: 0.75rem;
-            opacity: 0.75;
-            margin-top: 2px;
+        header .brand-subtitle {
+            font-family: 'DM Mono', 'Courier New', monospace;
+            font-size: 0.6875rem;
+            font-variant: small-caps;
+            letter-spacing: 0.12em;
+            color: rgba(247, 243, 226, 0.55);
         }
 
         main {
@@ -39,52 +62,65 @@
             display: flex;
             align-items: flex-start;
             justify-content: center;
-            padding: 28px 16px 40px;
+            padding: 36px 16px 40px;
         }
 
         .card {
-            background: white;
-            border-radius: 20px;
+            background: var(--bg-surface);
+            border: 1px solid var(--border);
+            border-radius: 16px;
             padding: 36px 28px;
             width: 100%;
-            max-width: 460px;
-            box-shadow: 0 4px 16px rgba(0,0,0,0.08), 0 1px 4px rgba(0,0,0,0.06);
+            max-width: 480px;
+            box-shadow: 0 4px 24px rgba(26, 26, 26, 0.08);
+        }
+
+        .card-heading {
+            font-family: 'Instrument Serif', Georgia, serif;
+            font-size: 24px;
+            font-weight: 400;
+            color: var(--text-primary);
+            margin-bottom: 24px;
         }
 
         /* --- Inputs --- */
         .field-label {
             display: block;
-            font-size: 0.8125rem;
+            font-family: 'DM Sans', sans-serif;
+            font-size: 12px;
             font-weight: 600;
-            color: #374151;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--text-muted);
             margin-bottom: 8px;
-            letter-spacing: 0.01em;
         }
 
         .text-input {
             width: 100%;
             padding: 15px 16px;
+            font-family: 'DM Sans', sans-serif;
             font-size: 1rem;
-            border: 2px solid #e5e7eb;
-            border-radius: 12px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
             outline: none;
-            color: #111827;
-            transition: border-color 0.18s;
-            background: #fafafa;
+            color: var(--text-primary);
+            background: var(--bg-primary);
+            transition: border-color 0.18s, box-shadow 0.18s;
             -webkit-appearance: none;
         }
 
         .text-input:focus {
-            border-color: #1d4ed8;
-            background: white;
+            border-color: var(--accent-purple-deep);
+            box-shadow: 0 0 0 3px rgba(93, 2, 82, 0.15);
         }
 
-        .text-input::placeholder { color: #9ca3af; }
-        .text-input.error { border-color: #dc2626; }
+        .text-input::placeholder { color: var(--text-muted); }
+        .text-input.error { border-color: var(--accent-error); }
 
         .field-error {
+            font-family: 'DM Sans', sans-serif;
             font-size: 0.75rem;
-            color: #dc2626;
+            color: var(--accent-error);
             margin-top: 5px;
             display: none;
         }
@@ -109,46 +145,46 @@
         }
 
         .record-btn {
-            width: 148px;
-            height: 148px;
-            border-radius: 50%;
+            width: 100%;
             border: none;
+            border-radius: 9999px;
+            padding: 14px 32px;
             cursor: pointer;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            gap: 10px;
-            transition: transform 0.12s, box-shadow 0.18s;
+            font-family: 'DM Sans', sans-serif;
+            font-size: 0.9375rem;
+            font-weight: 600;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            transition: background 0.18s, transform 0.12s;
             -webkit-tap-highlight-color: transparent;
             touch-action: manipulation;
             user-select: none;
         }
 
-        .record-btn:active:not(:disabled) { transform: scale(0.94); }
+        .record-btn:active:not(:disabled) { transform: scale(0.98); }
         .record-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 
         .record-btn.start {
-            background: linear-gradient(145deg, #2563eb, #1d4ed8);
-            box-shadow: 0 8px 28px rgba(29, 78, 216, 0.38), 0 2px 8px rgba(29,78,216,0.2);
-            color: white;
+            background: var(--accent-purple-deep);
+            color: var(--text-on-dark);
+        }
+
+        .record-btn.start:hover:not(:disabled) {
+            background: var(--accent-green);
         }
 
         .record-btn.stop {
-            background: linear-gradient(145deg, #ef4444, #dc2626);
-            box-shadow: 0 8px 28px rgba(220, 38, 38, 0.38), 0 2px 8px rgba(220,38,38,0.2);
-            color: white;
+            background: var(--accent-orange);
+            color: var(--text-on-dark);
         }
-
-        .btn-icon { font-size: 2.6rem; line-height: 1; }
-        .btn-text { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em; }
 
         /* --- Recording state --- */
         .recording-badge {
             display: flex;
             align-items: center;
             gap: 8px;
-            background: #fff1f2;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
             padding: 6px 14px;
             border-radius: 99px;
         }
@@ -156,7 +192,7 @@
         .pulse-dot {
             width: 10px;
             height: 10px;
-            background: #dc2626;
+            background: var(--accent-orange);
             border-radius: 50%;
             animation: pulse 1.3s ease-in-out infinite;
             flex-shrink: 0;
@@ -168,27 +204,30 @@
         }
 
         .recording-label {
+            font-family: 'DM Sans', sans-serif;
             font-size: 0.75rem;
             font-weight: 700;
-            color: #dc2626;
-            letter-spacing: 0.07em;
+            color: var(--accent-orange);
+            letter-spacing: 0.08em;
         }
 
         .timer {
+            font-family: 'DM Mono', 'Courier New', monospace;
             font-size: 2.5rem;
-            font-weight: 200;
-            color: #111827;
+            font-weight: 400;
+            color: var(--text-primary);
             letter-spacing: 0.06em;
             font-variant-numeric: tabular-nums;
         }
 
         .patient-chip {
+            font-family: 'DM Sans', sans-serif;
             font-size: 0.875rem;
-            color: #6b7280;
+            color: var(--text-muted);
             text-align: center;
         }
 
-        .patient-chip strong { color: #111827; }
+        .patient-chip strong { color: var(--text-primary); }
 
         /* --- Spinner --- */
         .spinner-wrap {
@@ -202,26 +241,28 @@
         .spinner {
             width: 52px;
             height: 52px;
-            border: 4px solid #e5e7eb;
-            border-top-color: #1d4ed8;
+            border: 4px solid var(--border);
+            border-top-color: var(--accent-purple-deep);
             border-radius: 50%;
             animation: spin 0.75s linear infinite;
         }
 
-        .spinner.amber { border-top-color: #d97706; }
+        .spinner.amber { border-top-color: var(--accent-gold); }
 
         @keyframes spin { to { transform: rotate(360deg); } }
 
         .status-title {
+            font-family: 'DM Sans', sans-serif;
             font-size: 1rem;
             font-weight: 600;
-            color: #111827;
+            color: var(--text-primary);
             text-align: center;
         }
 
         .status-sub {
+            font-family: 'DM Sans', sans-serif;
             font-size: 0.8125rem;
-            color: #6b7280;
+            color: var(--text-muted);
             text-align: center;
             line-height: 1.5;
         }
@@ -237,29 +278,31 @@
             font-size: 2.6rem;
         }
 
-        .icon-circle.green { background: #dcfce7; }
-        .icon-circle.red   { background: #fee2e2; }
-        .icon-circle.amber { background: #fef3c7; }
+        .icon-circle.green { background: rgba(5, 46, 40, 0.12); }
+        .icon-circle.red   { background: rgba(166, 52, 26, 0.12); }
+        .icon-circle.amber { background: rgba(255, 180, 17, 0.18); }
 
         /* --- Action buttons --- */
         .action-btn {
             width: 100%;
             padding: 15px 20px;
-            border-radius: 12px;
+            border-radius: 9999px;
             border: none;
             cursor: pointer;
+            font-family: 'DM Sans', sans-serif;
             font-size: 0.9375rem;
             font-weight: 600;
-            transition: transform 0.1s, opacity 0.15s;
+            transition: transform 0.1s, opacity 0.15s, background 0.18s;
             -webkit-tap-highlight-color: transparent;
             touch-action: manipulation;
         }
 
         .action-btn:active { transform: scale(0.97); }
 
-        .action-btn.primary   { background: #1d4ed8; color: white; }
-        .action-btn.danger    { background: #dc2626; color: white; }
-        .action-btn.ghost     { background: #f3f4f6; color: #374151; }
+        .action-btn.primary   { background: var(--accent-purple-deep); color: var(--text-on-dark); }
+        .action-btn.primary:hover { background: var(--accent-green); }
+        .action-btn.danger    { background: var(--accent-error); color: var(--text-on-dark); }
+        .action-btn.ghost     { background: var(--bg-card); color: var(--text-secondary); border: 1px solid var(--border); }
 
         .btn-stack {
             display: flex;
@@ -271,7 +314,7 @@
         /* --- Divider --- */
         hr.divider {
             border: none;
-            border-top: 1px solid #f3f4f6;
+            border-top: 1px solid var(--border);
             margin: 4px 0;
         }
 
@@ -279,8 +322,9 @@
         footer {
             text-align: center;
             padding: 16px 20px 24px;
-            font-size: 0.75rem;
-            color: #9ca3af;
+            font-family: 'DM Mono', 'Courier New', monospace;
+            font-size: 11px;
+            color: var(--text-muted);
             line-height: 1.5;
         }
     </style>
@@ -288,8 +332,8 @@
 <body>
 
 <header>
-    <h1>&#x1F3E5; AI Medical Scriber</h1>
-    <p>Record a consultation — transcribed automatically</p>
+    <span class="brand-name">Fayha</span>
+    <span class="brand-subtitle">AI Clinical Scriber</span>
 </header>
 
 <main>
@@ -366,6 +410,7 @@
 
     function renderReady() {
         card.innerHTML = `
+            <h2 class="card-heading">Start a Consultation</h2>
             <div class="name-row">
                 <div>
                     <label class="field-label" for="fname">First Name</label>
@@ -389,10 +434,7 @@
                 <p class="field-error" id="fields-err">Please fill in all patient fields before recording.</p>
             </div>
             <div class="record-area">
-                <button class="record-btn start" id="startBtn" onclick="startRecording()">
-                    <span class="btn-icon">&#x1F3A4;</span>
-                    <span class="btn-text">START RECORDING</span>
-                </button>
+                <button class="record-btn start" id="startBtn" onclick="startRecording()">START RECORDING</button>
             </div>
         `;
         document.getElementById('fname').addEventListener('input', e => { firstName = e.target.value; });
@@ -408,10 +450,7 @@
                     <span class="recording-label">RECORDING</span>
                 </div>
                 <div class="timer" id="timer">${fmt(recordingSeconds)}</div>
-                <button class="record-btn stop" onclick="stopRecording()">
-                    <span class="btn-icon">&#x23F9;&#xFE0F;</span>
-                    <span class="btn-text">STOP</span>
-                </button>
+                <button class="record-btn stop" onclick="stopRecording()">STOP RECORDING</button>
                 <p class="patient-chip">Patient: <strong>${firstName} ${lastName}</strong></p>
             </div>
         `;
@@ -441,7 +480,7 @@
         card.innerHTML = `
             <div class="record-area" style="gap:20px; padding: 8px 0;">
                 <div class="icon-circle green">&#x2705;</div>
-                <p class="status-title" style="color:#15803d;">Upload Successful!</p>
+                <p class="status-title" style="color:var(--accent-green);">Upload Successful!</p>
                 <p class="status-sub">Note will appear in Google Sheets shortly.</p>
                 <hr class="divider" style="width:100%;">
                 <div class="btn-stack">
@@ -456,7 +495,7 @@
         card.innerHTML = `
             <div class="record-area" style="gap:18px; padding: 8px 0;">
                 <div class="icon-circle red">&#x274C;</div>
-                <p class="status-title" style="color:#dc2626;">Upload Failed</p>
+                <p class="status-title" style="color:var(--accent-error);">Upload Failed</p>
                 <p class="status-sub">${errorMessage}</p>
                 <hr class="divider" style="width:100%;">
                 <div class="btn-stack">

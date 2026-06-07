@@ -39,14 +39,14 @@
             color: var(--text-on-dark);
             padding: 20px 24px;
             display: flex;
-            align-items: baseline;
+            align-items: center;
             gap: 12px;
         }
 
-        header .brand-name {
-            font-family: 'Instrument Serif', Georgia, serif;
-            font-size: 1.7rem;
-            letter-spacing: 0.01em;
+        header .brand-logo {
+            width: 80px;
+            height: auto;
+            display: block;
         }
 
         header .brand-subtitle {
@@ -332,8 +332,21 @@
 <body>
 
 <header>
-    <span class="brand-name">Fayha</span>
-    <span class="brand-subtitle">AI Clinical Scriber</span>
+    <svg class="brand-logo" viewBox="0 0 1590.4 643.2" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Fayha">
+        <g fill="#F7F3E2">
+            <path d="M310.400 192.800L202.880 192.800L202.880 416.800L220.480 416.800L220.480 303.840L307.200 303.840L307.200 287.200L220.480 287.200L220.480 209.440L310.400 209.440L310.400 192.800Z M434.240 341.600L530.560 341.600L561.600 416.800L581.440 416.800L482.560 184.160L383.680 416.800L403.520 416.800L434.240 341.600ZM441.280 324.960L482.560 224.800L523.840 324.960L441.280 324.960Z"></path>
+            <path d="M1132.800 192.800L1114.880 192.800L1114.880 286.560L984.000 286.560L984.000 192.800L966.400 192.800L966.400 416.800L984.000 416.800L984.000 303.200L1114.880 303.200L1114.880 416.800L1132.800 416.800L1132.800 192.800Z M1264.320 341.600L1360.640 341.600L1391.680 416.800L1411.520 416.800L1312.640 184.160L1213.760 416.800L1233.600 416.800L1264.320 341.600ZM1271.360 324.960L1312.640 224.800L1353.920 324.960L1271.360 324.960Z"></path>
+        </g>
+        <g transform="translate(686.72 176) scale(2.8)" stroke="#F7F3E2" stroke-width="4" fill="none" stroke-linecap="round">
+            <path d="M 11 12 C 11 36, 36 30, 36 53"></path>
+            <path d="M 61 12 C 61 36, 36 30, 36 53"></path>
+            <path d="M 36 53 L 36 76"></path>
+            <circle cx="11" cy="12" r="2.8" fill="#F7F3E2" stroke="none"></circle>
+            <circle cx="61" cy="12" r="2.8" fill="#F7F3E2" stroke="none"></circle>
+            <circle cx="36" cy="87" r="11"></circle>
+        </g>
+    </svg>
+    <span class="brand-subtitle">Built for Physicians by Physicians</span>
 </header>
 
 <main>

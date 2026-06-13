@@ -358,24 +358,32 @@
 </footer>
 
 <script>
-    // Change this to Railway URL when deployed
     const BACKEND_URL = 'https://ai-scriber-backend-production.up.railway.app';
 
-    let appState   = 'READY';
-    let mediaRecorder   = null;
-    let audioChunks     = [];
-    let audioBlob       = null;
-    let timerInterval   = null;
+    // ─── State ────────────────────────────────────────────────────────────────────
+    let appState         = 'READY';
+    let mediaRecorder    = null;
+    let stream           = null;
+    let currentMimeType  = '';
+    let audioChunks      = [];
+    // Each entry: {blob, mimeType, startSecond, endSecond, index}
+    // Never concatenated — sent to server individually so each is a valid container.
+    let segments         = [];
+    let timerInterval    = null;
     let recordingSeconds = 0;
-    let firstName       = '';
-    let lastName        = '';
-    let dateOfBirth     = '';
-    let retryAttempt    = 0;
-    let errorMessage    = '';
+    let firstName        = '';
+    let lastName         = '';
+    let dateOfBirth      = '';
+    let retryAttempt     = 0;
+    let errorMessage     = '';
+    // Each entry: {reason, at, secondsElapsed, resumedAt?}
+    // resumedAt is added by resumeRecording() before the next segment starts.
+    let interruptions    = [];
+    let interruptReason  = '';
 
     const card = document.getElementById('card');
 
-    // ─── Utilities ────────────────────────────────────────────────────────────
+    // ─── Utilities ────────────────────────────────────────────────────────────────
 
     function fmt(secs) {
         const m = Math.floor(secs / 60).toString().padStart(2, '0');
@@ -400,7 +408,7 @@
         return '';
     }
 
-    // ─── State machine ────────────────────────────────────────────────────────
+    // ─── State machine ────────────────────────────────────────────────────────────
 
     function setState(next) {
         console.log(`[Scriber] ${appState} → ${next}`);
@@ -410,16 +418,17 @@
 
     function render() {
         switch (appState) {
-            case 'READY':      renderReady();      break;
-            case 'RECORDING':  renderRecording();  break;
-            case 'PROCESSING': renderProcessing(); break;
-            case 'RETRYING':   renderRetrying();   break;
-            case 'SUCCESS':    renderSuccess();    break;
-            case 'ERROR':      renderError();      break;
+            case 'READY':        renderReady();        break;
+            case 'RECORDING':    renderRecording();    break;
+            case 'INTERRUPTED':  renderInterrupted();  break;
+            case 'PROCESSING':   renderProcessing();   break;
+            case 'RETRYING':     renderRetrying();     break;
+            case 'SUCCESS':      renderSuccess();      break;
+            case 'ERROR':        renderError();        break;
         }
     }
 
-    // ─── Renderers ────────────────────────────────────────────────────────────
+    // ─── Renderers ────────────────────────────────────────────────────────────────
 
     function renderReady() {
         card.innerHTML = `
@@ -469,6 +478,32 @@
         `;
     }
 
+    function renderInterrupted() {
+        const reasonText = ({
+            'call-or-mute':   'Possible incoming call or system audio interruption.',
+            'track-ended':    'Microphone was taken by another app.',
+            'recorder-error': 'A recording error occurred.',
+            'page-hidden':    'App was backgrounded during recording.',
+        })[interruptReason] || 'Audio interruption detected.';
+
+        card.innerHTML = `
+            <div class="record-area" style="gap:20px; padding:8px 0;">
+                <div class="icon-circle amber">&#x26A0;</div>
+                <p class="status-title" style="color:var(--accent-gold);">Recording Paused</p>
+                <p class="status-sub">${reasonText}<br><strong>${fmt(recordingSeconds)}</strong> of audio is preserved.</p>
+                <p class="status-sub" id="interruption-hint" style="font-style:italic;">
+                    Tap Resume to re-acquire the mic and continue.
+                </p>
+                <hr class="divider" style="width:100%;">
+                <div class="btn-stack">
+                    <button class="action-btn primary" onclick="resumeRecording()">Resume Recording</button>
+                    <button class="action-btn danger"  onclick="finishAndUpload()">Stop &amp; Upload Captured Audio</button>
+                    <button class="action-btn ghost"   onclick="startNew()">Discard &amp; Start Over</button>
+                </div>
+            </div>
+        `;
+    }
+
     function renderProcessing() {
         card.innerHTML = `
             <div class="spinner-wrap">
@@ -504,7 +539,7 @@
     }
 
     function renderError() {
-        const canRetry = !!audioBlob;
+        const canRetry = segments.length > 0;
         card.innerHTML = `
             <div class="record-area" style="gap:18px; padding: 8px 0;">
                 <div class="icon-circle red">&#x274C;</div>
@@ -519,7 +554,158 @@
         `;
     }
 
-    // ─── Recording logic ──────────────────────────────────────────────────────
+    // ─── Interruption detection ───────────────────────────────────────────────────
+    // Named functions so they can be removed from tracks on cleanup.
+
+    function onTrackMute() {
+        if (appState === 'RECORDING') {
+            console.warn('[Scriber] INTERRUPTION: audio track muted — possible incoming call');
+            handleInterruption('call-or-mute');
+        }
+    }
+
+    function onTrackUnmute() {
+        console.log('[Scriber] Audio track unmuted — mic is available again');
+        if (appState === 'INTERRUPTED') {
+            const hint = document.getElementById('interruption-hint');
+            if (hint) hint.textContent = 'Mic is available again — tap Resume to continue.';
+        }
+    }
+
+    function onTrackEnded() {
+        console.warn('[Scriber] INTERRUPTION: audio track ended — track is dead, will re-acquire on resume');
+        if (appState === 'RECORDING') handleInterruption('track-ended');
+    }
+
+    function onVisibilityChange() {
+        if (document.visibilityState === 'hidden') {
+            console.log('[Scriber] Page hidden during recording — monitoring track state');
+            return;
+        }
+        // Page became visible again — check if track silently died while hidden
+        if (appState === 'RECORDING' && stream) {
+            const tracks = stream.getAudioTracks();
+            const anyEnded = tracks.some(t => t.readyState === 'ended');
+            const anyMuted = tracks.some(t => t.muted);
+            console.log('[Scriber] Page visible — track health:',
+                tracks.map(t => `${t.readyState}/${t.muted ? 'muted' : 'live'}`).join(', '));
+            if (anyEnded)      handleInterruption('track-ended');
+            else if (anyMuted) handleInterruption('call-or-mute');
+        }
+    }
+
+    function onPageHide() {
+        // Flush the current 1-second buffer on page-hide so we don't lose buffered audio
+        if (appState === 'RECORDING' && mediaRecorder && mediaRecorder.state === 'recording') {
+            console.warn('[Scriber] pagehide — flushing recorder buffer');
+            try { mediaRecorder.requestData(); } catch(e) { /* not available on all browsers */ }
+        }
+    }
+
+    function handleInterruption(reason) {
+        if (appState !== 'RECORDING') return;  // debounce multiple simultaneous signals
+
+        console.warn(`[Scriber] INTERRUPTION: ${reason} at ${fmt(recordingSeconds)}`);
+        interruptions.push({ reason, at: new Date().toISOString(), secondsElapsed: recordingSeconds });
+        interruptReason = reason;
+
+        clearInterval(timerInterval);
+        timerInterval = null;
+
+        // Flush any buffered audio before stopping so the last partial second isn't lost
+        if (mediaRecorder && mediaRecorder.state === 'recording') {
+            try { mediaRecorder.requestData(); } catch(e) { /* not available on all browsers */ }
+        }
+
+        // Transition state BEFORE calling stop() so onstop sees INTERRUPTED (not RECORDING)
+        // and knows not to trigger upload yet.
+        setState('INTERRUPTED');
+
+        if (mediaRecorder && (mediaRecorder.state === 'recording' || mediaRecorder.state === 'paused')) {
+            mediaRecorder.stop();
+        }
+    }
+
+    function cleanupPageListeners() {
+        document.removeEventListener('visibilitychange', onVisibilityChange);
+        window.removeEventListener('pagehide', onPageHide);
+    }
+
+    // ─── Recorder setup (shared by startRecording and resumeRecording) ────────────
+
+    function setupRecorder(newStream, startSecond) {
+        // Capture the MIME type now so onstop uses the right type even if currentMimeType
+        // were to change (defensive; in practice it doesn't change within a session).
+        const segMimeType = currentMimeType || 'audio/webm';
+
+        audioChunks = [];
+        mediaRecorder = new MediaRecorder(newStream, currentMimeType ? { mimeType: currentMimeType } : {});
+
+        mediaRecorder.ondataavailable = e => {
+            if (e.data && e.data.size > 0) {
+                audioChunks.push(e.data);
+                console.log('[Scriber] Chunk received, bytes:', e.data.size,
+                            'total chunks this segment:', audioChunks.length);
+            }
+        };
+
+        mediaRecorder.onerror = (e) => {
+            console.error('[Scriber] INTERRUPTION: MediaRecorder error —', e.error?.message || e);
+            handleInterruption('recorder-error');
+        };
+
+        // Each recorder instance closes over its own newStream and startSecond so cleanup
+        // and metadata are always correct even if mediaRecorder is replaced on resume.
+        mediaRecorder.onstop = () => {
+            newStream.getTracks().forEach(t => {
+                t.removeEventListener('mute',   onTrackMute);
+                t.removeEventListener('unmute', onTrackUnmute);
+                t.removeEventListener('ended',  onTrackEnded);
+                t.stop();
+            });
+
+            // Build ONE valid audio container for this segment.
+            // Never concatenate with other segments — each platform's container format
+            // (MP4 on iOS, WebM elsewhere) is only valid as a standalone file.
+            const seg = new Blob(audioChunks, { type: segMimeType });
+            const segIndex = segments.length;
+            console.log('[Scriber] Segment', segIndex, '—', seg.size, 'bytes,',
+                        'mime:', segMimeType,
+                        'range:', startSecond + 's–' + recordingSeconds + 's,',
+                        'appState:', appState);
+
+            if (seg.size > 0) {
+                segments.push({
+                    blob:        seg,
+                    mimeType:    segMimeType,
+                    startSecond: startSecond,
+                    endSecond:   recordingSeconds,
+                    index:       segIndex,
+                });
+            }
+            audioChunks = [];
+
+            if (appState === 'PROCESSING') {
+                // Normal user-initiated stop — all segments ready, send to server
+                sendAllSegments(1);
+            }
+            // If INTERRUPTED: wait for user to choose Resume / Stop+Upload / Discard
+        };
+
+        newStream.getAudioTracks().forEach(t => {
+            console.log('[Scriber] Track attached — readyState:', t.readyState, 'muted:', t.muted);
+            t.addEventListener('mute',   onTrackMute);
+            t.addEventListener('unmute', onTrackUnmute);
+            t.addEventListener('ended',  onTrackEnded);
+        });
+
+        mediaRecorder.start(1000);
+        console.log('[Scriber] MediaRecorder started (1s timeslice)',
+                    'actual mimeType:', mediaRecorder.mimeType,
+                    'startSecond:', startSecond);
+    }
+
+    // ─── Recording logic ──────────────────────────────────────────────────────────
 
     async function startRecording() {
         firstName   = (document.getElementById('fname')?.value || firstName).trim();
@@ -529,44 +715,32 @@
         if (!firstName || !lastName || !dateOfBirth) {
             const err = document.getElementById('fields-err');
             if (err) err.style.display = 'block';
-            if (!firstName) document.getElementById('fname')?.classList.add('error');
-            if (!lastName)  document.getElementById('lname')?.classList.add('error');
+            if (!firstName)   document.getElementById('fname')?.classList.add('error');
+            if (!lastName)    document.getElementById('lname')?.classList.add('error');
             if (!dateOfBirth) document.getElementById('dob')?.classList.add('error');
             return;
         }
 
-        console.log('[Scriber] Requesting microphone for patient:', firstName, lastName, dateOfBirth);
+        console.log('[Scriber] Requesting microphone for:', firstName, lastName, dateOfBirth);
 
         try {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             console.log('[Scriber] Microphone access granted');
 
-            audioChunks = [];
-            audioBlob   = null;
+            audioChunks      = [];
+            segments         = [];
+            interruptions    = [];
+            interruptReason  = '';
             recordingSeconds = 0;
+            currentMimeType  = getSupportedMimeType();
 
-            const mimeType = getSupportedMimeType();
-            console.log('[Scriber] MIME type selected:', mimeType || '(browser default)');
+            console.log('[Scriber] MIME type selected:', currentMimeType || '(browser default)');
 
-            mediaRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : {});
-
-            mediaRecorder.ondataavailable = e => {
-                if (e.data && e.data.size > 0) {
-                    audioChunks.push(e.data);
-                    console.log('[Scriber] Chunk received, bytes:', e.data.size);
-                }
-            };
-
-            mediaRecorder.onstop = () => {
-                stream.getTracks().forEach(t => t.stop());
-                const blobType = mimeType || 'audio/webm';
-                audioBlob = new Blob(audioChunks, { type: blobType });
-                console.log('[Scriber] Blob created — size:', audioBlob.size, 'type:', audioBlob.type);
-                sendToBackend(1);
-            };
-
-            mediaRecorder.start(1000);
+            setupRecorder(stream, 0);
             setState('RECORDING');
+
+            document.addEventListener('visibilitychange', onVisibilityChange);
+            window.addEventListener('pagehide', onPageHide);
 
             timerInterval = setInterval(() => {
                 recordingSeconds++;
@@ -587,25 +761,117 @@
         }
     }
 
-    function stopRecording() {
-        console.log('[Scriber] Stop button tapped — recording duration:', fmt(recordingSeconds));
-        clearInterval(timerInterval);
-        setState('PROCESSING');
-        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-            mediaRecorder.stop();
+    async function resumeRecording() {
+        console.log('[Scriber] Resuming after interruption — re-acquiring microphone');
+
+        // Record the wall-clock resume timestamp so the server can compute the exact
+        // gap duration (interruption.at → interruption.resumedAt) for the gap marker.
+        if (interruptions.length > 0) {
+            interruptions[interruptions.length - 1].resumedAt = new Date().toISOString();
+            console.log('[Scriber] Resume wall-clock recorded:', interruptions[interruptions.length - 1].resumedAt);
+        }
+
+        // Defensively clean up the old (interrupted / dead) stream. The onstop handler
+        // already removed track listeners and stopped the tracks, but we null stream here
+        // before calling getUserMedia to avoid any lingering reference.
+        if (stream) {
+            stream.getTracks().forEach(t => {
+                t.removeEventListener('mute',   onTrackMute);
+                t.removeEventListener('unmute', onTrackUnmute);
+                t.removeEventListener('ended',  onTrackEnded);
+                try { t.stop(); } catch(e) { /* already stopped */ }
+            });
+            stream = null;
+        }
+
+        try {
+            stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            console.log('[Scriber] Microphone re-acquired for resume');
+
+            // Continue the timer from where it paused — recordingSeconds was not reset
+            setupRecorder(stream, recordingSeconds);
+            setState('RECORDING');
+
+            timerInterval = setInterval(() => {
+                recordingSeconds++;
+                const el = document.getElementById('timer');
+                if (el) el.textContent = fmt(recordingSeconds);
+            }, 1000);
+
+        } catch (err) {
+            console.error('[Scriber] Failed to re-acquire mic:', err.name, err.message);
+            errorMessage = `Could not re-acquire microphone: ${err.message}. Please check mic permissions and try again.`;
+            setState('ERROR');
         }
     }
 
-    // ─── Upload + retry ───────────────────────────────────────────────────────
+    function stopRecording() {
+        console.log('[Scriber] Stop button — recording duration:', fmt(recordingSeconds));
+        clearInterval(timerInterval);
+        timerInterval = null;
+        cleanupPageListeners();
+        setState('PROCESSING');
+        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+            mediaRecorder.stop();
+            // onstop will call sendAllSegments(1) since appState is now PROCESSING
+        } else {
+            // Recorder already stopped (rare edge case) — segments[] already has everything
+            sendAllSegments(1);
+        }
+    }
 
-    async function sendToBackend(attempt) {
-        console.log(`[Scriber] Upload attempt ${attempt} — blob: ${audioBlob?.size} bytes`);
+    function finishAndUpload() {
+        console.log('[Scriber] Finishing after interruption — uploading', segments.length, 'segment(s)');
+        cleanupPageListeners();
+        setState('PROCESSING');
+        // Recorder was already stopped by handleInterruption; onstop already saved the last
+        // segment, so send directly without stopping again.
+        sendAllSegments(1);
+    }
+
+    // ─── Upload + retry ───────────────────────────────────────────────────────────
+
+    async function sendAllSegments(attempt) {
+        if (!segments.length) {
+            errorMessage = 'No audio was captured. Please try recording again.';
+            setState('ERROR');
+            return;
+        }
+
+        console.log(`[Scriber] Upload attempt ${attempt} —`,
+                    `segments: ${segments.length},`,
+                    `interrupted: ${interruptions.length > 0},`,
+                    `gaps: ${interruptions.length}`);
+        segments.forEach(s => {
+            console.log(`  segment_${s.index}: ${s.blob.size} bytes, mime: ${s.mimeType},`,
+                        `range: ${s.startSecond}s–${s.endSecond}s`);
+        });
 
         const formData = new FormData();
-        formData.append('audio', audioBlob, 'recording.webm');
-        formData.append('firstName', firstName);
-        formData.append('lastName', lastName);
-        formData.append('dateOfBirth', dateOfBirth);
+        formData.append('firstName',         firstName);
+        formData.append('lastName',          lastName);
+        formData.append('dateOfBirth',       dateOfBirth);
+        formData.append('segmentCount',      String(segments.length));
+        formData.append('interrupted',       interruptions.length > 0 ? 'true' : 'false');
+        formData.append('interruptionCount', String(interruptions.length));
+        formData.append('interruptions',     JSON.stringify(interruptions));
+
+        // Per-segment metadata for the server (MIME type, timing)
+        const segmentMeta = segments.map(s => ({
+            index:       s.index,
+            mimeType:    s.mimeType,
+            startSecond: s.startSecond,
+            endSecond:   s.endSecond,
+        }));
+        formData.append('segmentMeta', JSON.stringify(segmentMeta));
+
+        // Each segment as its own multipart file — valid standalone audio container
+        segments.forEach(s => {
+            const ext = s.mimeType.includes('mp4') ? 'mp4'
+                      : s.mimeType.includes('ogg') ? 'ogg'
+                      : 'webm';
+            formData.append(`segment_${s.index}`, s.blob, `segment-${s.index}.${ext}`);
+        });
 
         try {
             const res = await fetch(`${BACKEND_URL}/upload`, {
@@ -623,8 +889,7 @@
             const data = await res.json();
             console.log('[Scriber] Success response:', data);
 
-            audioBlob   = null;
-            audioChunks = [];
+            segments = [];    // cleared on success; kept on failure for manual retry
             setState('SUCCESS');
 
         } catch (err) {
@@ -638,7 +903,7 @@
                 const delay = delays[attempt - 1];
                 console.log(`[Scriber] Waiting ${delay / 1000}s before retry ${attempt}…`);
                 await wait(delay);
-                await sendToBackend(attempt + 1);
+                await sendAllSegments(attempt + 1);
             } else {
                 console.error('[Scriber] All 3 retries exhausted.');
                 errorMessage = 'Connection failed after 3 attempts. Please check your internet connection and tap Try Again when ready.';
@@ -648,20 +913,32 @@
     }
 
     async function retryUpload() {
-        if (!audioBlob) {
+        if (!segments.length) {
             errorMessage = 'Recording was lost — please record again.';
             setState('ERROR');
             return;
         }
-        console.log('[Scriber] Manual retry — reusing existing audio blob');
+        console.log('[Scriber] Manual retry — reusing', segments.length, 'segment(s)');
         setState('PROCESSING');
-        await sendToBackend(1);
+        await sendAllSegments(1);
     }
 
     function startNew() {
-        console.log('[Scriber] Starting new session — clearing audio blob');
-        audioBlob        = null;
+        console.log('[Scriber] Starting new session — clearing all state');
+        cleanupPageListeners();
+        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+            mediaRecorder.stop();
+        }
+        if (stream) {
+            stream.getTracks().forEach(t => t.stop());
+            stream = null;
+        }
+        mediaRecorder    = null;
         audioChunks      = [];
+        segments         = [];
+        interruptions    = [];
+        interruptReason  = '';
+        currentMimeType  = '';
         firstName        = '';
         lastName         = '';
         dateOfBirth      = '';
@@ -669,6 +946,7 @@
         retryAttempt     = 0;
         errorMessage     = '';
         clearInterval(timerInterval);
+        timerInterval    = null;
         setState('READY');
     }
 

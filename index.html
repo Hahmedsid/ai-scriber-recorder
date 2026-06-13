@@ -178,6 +178,21 @@
             color: var(--text-on-dark);
         }
 
+        .record-btn.pause {
+            background: var(--accent-gold);
+            color: var(--text-primary);
+        }
+
+        .record-btn-row {
+            display: flex;
+            gap: 10px;
+            width: 100%;
+        }
+
+        .record-btn-row .record-btn {
+            flex: 1;
+        }
+
         /* --- Recording state --- */
         .recording-badge {
             display: flex;
@@ -472,7 +487,10 @@
                     <span class="recording-label">RECORDING</span>
                 </div>
                 <div class="timer" id="timer">${fmt(recordingSeconds)}</div>
-                <button class="record-btn stop" onclick="stopRecording()">STOP RECORDING</button>
+                <div class="record-btn-row">
+                    <button class="record-btn pause" onclick="pauseRecording()">PAUSE</button>
+                    <button class="record-btn stop" onclick="stopRecording()">STOP RECORDING</button>
+                </div>
                 <p class="patient-chip">Patient: <strong>${firstName} ${lastName}</strong></p>
             </div>
         `;
@@ -480,6 +498,7 @@
 
     function renderInterrupted() {
         const reasonText = ({
+            'manual-pause':   'Recording paused by physician.',
             'call-or-mute':   'Possible incoming call or system audio interruption.',
             'track-ended':    'Microphone was taken by another app.',
             'recorder-error': 'A recording error occurred.',
@@ -803,6 +822,10 @@
             errorMessage = `Could not re-acquire microphone: ${err.message}. Please check mic permissions and try again.`;
             setState('ERROR');
         }
+    }
+
+    function pauseRecording() {
+        handleInterruption('manual-pause');
     }
 
     function stopRecording() {

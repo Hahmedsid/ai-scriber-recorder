@@ -342,9 +342,76 @@
             color: var(--text-muted);
             line-height: 1.5;
         }
+
+        /* --- Password gate --- */
+        body.locked > header,
+        body.locked > main,
+        body.locked > footer {
+            display: none;
+        }
+
+        .auth-overlay {
+            position: fixed;
+            inset: 0;
+            background: var(--bg-primary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 16px;
+            z-index: 9999;
+        }
+
+        .auth-card {
+            background: var(--bg-surface);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 36px 28px;
+            width: 100%;
+            max-width: 420px;
+            box-shadow: 0 4px 24px rgba(26, 26, 26, 0.08);
+        }
+
+        .auth-card .card-heading {
+            text-align: center;
+        }
+
+        .auth-card .field-error {
+            display: none;
+        }
+
+        .auth-card .field-error.visible {
+            display: block;
+        }
+
+        .auth-card .action-btn {
+            margin-top: 4px;
+        }
+
+        @keyframes shake {
+            10%, 90% { transform: translateX(-1px); }
+            20%, 80% { transform: translateX(2px); }
+            30%, 50%, 70% { transform: translateX(-4px); }
+            40%, 60% { transform: translateX(4px); }
+        }
+
+        .text-input.shake {
+            animation: shake 0.4s ease-in-out;
+        }
     </style>
 </head>
-<body>
+<body class="locked">
+
+<div class="auth-overlay" id="authOverlay">
+    <div class="auth-card">
+        <h2 class="card-heading">Enter Password</h2>
+        <div class="input-group">
+            <label class="field-label" for="authPassword">Password</label>
+            <input class="text-input" id="authPassword" type="password" placeholder="••••••••" autocomplete="off" />
+            <p class="field-error" id="authError">Incorrect password</p>
+        </div>
+        <button class="action-btn primary" id="authSubmit">Unlock</button>
+    </div>
+</div>
 
 <header>
     <svg class="brand-logo" viewBox="0 0 1590.4 643.2" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Fayha">
@@ -971,6 +1038,44 @@
         clearInterval(timerInterval);
         timerInterval    = null;
         setState('READY');
+    }
+
+    // ─── Password gate ────────────────────────────────────────────────────────────
+
+    const AUTH_PASSWORD    = 'Duhs1234$';
+    const AUTH_SESSION_KEY = 'fayhaAuthed';
+
+    function unlockApp() {
+        sessionStorage.setItem(AUTH_SESSION_KEY, 'true');
+        document.body.classList.remove('locked');
+        document.getElementById('authOverlay').style.display = 'none';
+    }
+
+    function attemptUnlock() {
+        const input = document.getElementById('authPassword');
+        const err   = document.getElementById('authError');
+        if (input.value === AUTH_PASSWORD) {
+            unlockApp();
+        } else {
+            err.classList.add('visible');
+            input.classList.remove('shake');
+            // Force reflow so the animation can re-trigger on repeated wrong attempts
+            void input.offsetWidth;
+            input.classList.add('shake');
+            input.value = '';
+            input.focus();
+        }
+    }
+
+    document.getElementById('authSubmit').addEventListener('click', attemptUnlock);
+    document.getElementById('authPassword').addEventListener('keydown', e => {
+        if (e.key === 'Enter') attemptUnlock();
+    });
+
+    if (sessionStorage.getItem(AUTH_SESSION_KEY) === 'true') {
+        unlockApp();
+    } else {
+        document.getElementById('authPassword').focus();
     }
 
     // Boot
